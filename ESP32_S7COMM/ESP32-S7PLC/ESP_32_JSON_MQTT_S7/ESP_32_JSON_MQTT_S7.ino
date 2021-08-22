@@ -1,6 +1,10 @@
-/*READING WITH LAN CABLE TO THE PLC   AND SENDING OVER MQTT WITH JSON PAYLOAD
- * checking it with lan connection 
- * ---  @PRANAV  16/8/2021  21:24
+/*Sending MQTT data over json format with freeRTOS task running. 
+ * 
+ * freeRTOS only TASK 1 with MQTT and in VOID LOOP S7 comm is done and working with json data over mqtt.
+ * 
+ * some time scan cycle is not working properly
+ * 
+ * ---  @PRANAV 22/8/2021  17:54
 
 ----------------------------------------------------------------------
 Data Read Demo
@@ -9,20 +13,20 @@ Data Read Demo
  by Davide Nardella
 ------------------------------------------------------------------------
 ----------------------------------------------------------------------*/
+TaskHandle_t Task1;
 
-#include "Platform.h"
+//#include "Platform.h"
 #include "Settimino.h"
-/*#ifdef ESP8266
-#include <ESP8266WiFi.h>
-#else
-#include <WiFi.h>
-#endif*/
+#include <Ethernet.h>
+#include <SPI.h>
 
 
 
 #define RESET_P 26        // Tie the Wiz820io/W5500 reset pin to ESP32 GPIO26 pin.
 // Uncomment next line to perform small and fast data access
 #define DO_IT_SMALL
+
+//Mqtt 
 #include <PubSubClient.h>
 #include <ArduinoJson.h>
 
@@ -31,7 +35,7 @@ Data Read Demo
 // The IP address will be dependent on your local network:
 // Enter a MAC address and IP address for your controller below.
 
-byte mac[] = { 0x02, 0xF0, 0x0D, 0xBE, 0xEF, 0x01 };             /// Mac changed
+uint8_t eth_MAC[] = { 0x02, 0xF0, 0x0D, 0xBE, 0xEF, 0x01 };
 
 
 // Enter a MAC address and IP address for your controller below.
@@ -39,10 +43,12 @@ byte mac[] = { 0x02, 0xF0, 0x0D, 0xBE, 0xEF, 0x01 };             /// Mac changed
 //byte mac[] = { 
 //  0x90, 0xA2, 0xDA, 0x0F, 0x08, 0xE1 };
 
-IPAddress PLC(172,17,1,205);   // PLC Address
-IPAddress ip(172,17,1,178); // Local Address
-IPAddress Gateway(171, 17, 1, 1);
-IPAddress Subnet(255, 255, 255, 0);
+IPAddress PLC(10,0,0,180);   // PLC Address
+
+IPAddress eth_IP(10, 0, 0, 178);    // *** CHANGE THIS to something relevant for YOUR LAN. ***
+IPAddress eth_MASK(255, 255, 255, 0);   // Subnet mask.
+IPAddress eth_DNS(8, 8, 8, 8);    // *** CHANGE THIS to match YOUR DNS server.           ***
+IPAddress eth_GW(10, 0, 0, 1);   // *** CHANGE THIS to match YOUR Gateway (router).     ***
 
 /*// Following constants are needed if you are connecting via WIFI
 // The ssid is the name of my WIFI network (the password obviously is wrong)
@@ -59,9 +65,13 @@ PubSubClient client(espClient);
 long lastMsg = 0;
 char msg[50];
 int value = 0;
-//==========================MQTT ==================================================
+//==========================MQTT ======================
 
-
+int Size, Result;
+float Pressure;
+unsigned long Encoder;
+int Component;
+byte Bytes;
 byte MyBuffer[1024];
 byte MyWrite[4];
 
@@ -101,7 +111,7 @@ void prt_ethval(uint8_t refval) {
             ("UNKNOWN - Update espnow_gw.ino to match Ethernet.h");
     }
 }
-/////////////////////////FUNCTION 3 ///////////////////////////
+
 /////////////////////////FUNCTION 2 ////////////////
 void prt_hwval(uint8_t refval) {
     switch (refval) {
@@ -133,17 +143,20 @@ void prt_hwval(uint8_t refval) {
 void setup() {
     // Open serial communications and wait for port to open:
   Serial.begin(115200);
-     
+
+  
   Ethernet.init(5);         // SS pin
   WizReset();
-  Serial.println("Starting ETHERNET connection...");
-  Ethernet.begin(mac,ip,Gateway,Gateway,Subnet);  // start the Ethernet connection
   
-  delay(2000);              // give the Ethernet shield a second to initialize
+
+  Serial.println("Starting ETHERNET connection...");
+  Ethernet.begin(eth_MAC, eth_IP, eth_DNS, eth_GW, eth_MASK);
+  
+  delay(1000);              // give the Ethernet shield a second to initialize
   
   Serial.print("Ethernet IP is: ");
   Serial.println(Ethernet.localIP());
-
+  
   /*
      * Sanity checks for W5500 and cable connection.
      */
@@ -174,15 +187,66 @@ void setup() {
         Serial.println(" OK");
     }
 
-//==========================MQTT =====================
-  client.setServer(mqtt_server, 1883);
-  client.setCallback(callback);
-//==========================MQTT ====================    
+    //==========================MQTT =====================
+    client.setServer(mqtt_server, 1883);
+    client.setCallback(callback);
+    //==========================MQTT =====================
+    xTaskCreatePinnedToCore(
+                      Task1code,   /* Task function. */
+                      "Task1",     /* name of task. */
+                      10000,       /* Stack size of task */
+                      NULL,        /* parameter of the task */
+                      1,           /* priority of the task */
+                      &Task1,      /* Task handle to keep track of created task */
+                      0);          /* pin task to core 0 */                  
+
+
+}
+////////////////////////////////END SETUP //////////////////////////////////
+
+
+
+
+//Task1code: connecting the mqtt
+void Task1code( void * pvParameters ){
+  Serial.print("Task1 running on core ");
+  Serial.println(xPortGetCoreID());
+
+  for(;;){
+    //For small client is used for mqtt
+   
+    
+  StaticJsonDocument<300> doc;
+
+    doc["sensor"] = "gps";
+    doc["time"] = 1313123;
+
+    JsonArray data = doc.createNestedArray("data");
+    data.add(Pressure);
+    /*data.add(Encoder);
+    data.add(Component);
+    data.add(Bytes);*/
+    
+    serializeJsonPretty(doc, Serial);
+
+    char out[128];
+      int b = serializeJson(doc,out);
+      Serial.print("bytes = ");
+      Serial.println(b,DEC);
+          
+    boolean rc = client.publish("esp32/S7", out);
+
+    if(rc == true){
+      Serial.println("Success sending message");
+    } else {
+      Serial.println("Error sending message");
+    }
+    vTaskDelay(5000 / portTICK_PERIOD_MS);
+  }
 }
 
 
 void callback(char* topic, byte* message, unsigned int length) {
-
   Serial.print("Message arrived on topic: ");
   Serial.print(topic);
   Serial.print(". Message: ");
@@ -211,10 +275,8 @@ void callback(char* topic, byte* message, unsigned int length) {
   }
 }
 
-
-//==========================MQTT ==================================================
-
-void reconnect() {
+//==========================MQTT ===============================
+void reconnect(){
   // Loop until we're reconnected
   while (!client.connected()) {
     Serial.print("Attempting MQTT connection...");
@@ -222,18 +284,17 @@ void reconnect() {
     if (client.connect("esp32pranav")) {
       Serial.println("connected");
       // Subscribe
-      client.subscribe("esp32/output");
+      //client.subscribe("esp32/output");
     } else {
       Serial.print("failed, rc=");
       Serial.print(client.state());
       Serial.println(" try again in 5 seconds");
       // Wait 5 seconds before retrying
-      delay(1000);
+      delay(5000);
     }
   }
 }
-
-//==========================MQTT ==================================================
+//==========================MQTT ============================
 
 
 //----------------------------------------------------------------------
@@ -256,8 +317,8 @@ bool Connect()
       Ethernet.init(5);         // SS pin
       WizReset();
       Serial.println("Starting ETHERNET connection...");
-      Ethernet.begin(mac,ip,Gateway,Gateway,Subnet);  // start the Ethernet connection
-      
+      Ethernet.begin(eth_MAC, eth_IP, eth_DNS, eth_GW, eth_MASK);
+  
       delay(2000);              // give the Ethernet shield a second to initialize
       
       Serial.print("Ethernet IP is: ");
@@ -290,27 +351,22 @@ void ShowTime()
 //----------------------------------------------------------------------
 void loop() 
 {
-  if (!client.connected()) {
+//<<<<<<<<<<<<<<<<<<<<<-----------mqtt ------------------>>>>>>>>>>>>>>>>
+   if (!client.connected()) {
+    Serial.print("MQTT CLIENT NOT ABLE TO CONNECT");
     reconnect();
-  }
-  client.loop();
+    }
+    client.loop();
+//<<<<<<<<<<<<<<<<<<<<<-----------mqtt ------------------>>>>>>>>>>>>>>>>
 
-  delay(100);
-  int Size, Result;
-  float Pressure;
-  unsigned long Encoder;
-  int Component;
-  byte Bytes;
- 
-  // Connection
+    
+  // Connection for PLC
   while (!Client.Connected)
   {
     if (!Connect())
       delay(500);
   }
 
-  
-  
 /////////////**********************READING DATA ****************************//////////////////////
 
 
@@ -329,7 +385,7 @@ void loop()
     Pressure = S7.FloatAt(&MyBuffer, 0);
     //Serial.print("Pressure_0_index=");
     //Serial.println(Pressure); 
-    //Serial.println(""); 
+    Serial.println("---------------- S7 COMMUNICITON DONE ---------------"); 
     
     Encoder = S7.DWordAt(&MyBuffer, 4);
     //Serial.print("Encoder_4_index=");
@@ -345,61 +401,16 @@ void loop()
     //Serial.println(Bytes);  
     //Serial.println(""); 
 
-    long now = millis();
+    /*long now = millis();
     if (now - lastMsg > 1000) {
-      lastMsg = now;
+      lastMsg = now;*/
 
-    StaticJsonDocument<300> doc;
-
-    doc["sensor"] = "gps";
-    doc["time"] = 1313123;
-
-    JsonArray data = doc.createNestedArray("data");
-    data.add(Pressure);
-    data.add(Encoder);
-    data.add(Component);
-    data.add(Bytes);
-    
-    serializeJsonPretty(doc, Serial);
-
-    char out[128];
-      int b = serializeJson(doc,out);
-      Serial.print("bytes = ");
-      Serial.println(b,DEC);
-          
-    boolean rc = client.publish("esp32/S7", out);
-
-    if(rc == true){
-      Serial.println("Success sending message");
-    } else {
-      Serial.println("Error sending message");
-      }
-    }
   }
   else
     CheckError(Result);
-    
-    /*float f = 123.45;
-    byte* bytes = (byte*)&f;
-     
-  
-    
-    
-    Result=Client.WriteArea(S7AreaDB, // We are requesting DB access
-                       307,        // DB Number = 1
-                         0,        // Start from byte N.0
-                         4,     // We need "Size" bytes
-                         bytes);  // Put them into our target (Buffer or PDU)
-    
-    
-    */
+   
   delay(1000);  
-  
 }
-
-
-
-
 
 
 //----------------------------------------------------------------------
