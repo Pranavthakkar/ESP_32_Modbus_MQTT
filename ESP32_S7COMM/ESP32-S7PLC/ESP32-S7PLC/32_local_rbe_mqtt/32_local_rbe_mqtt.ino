@@ -7,7 +7,7 @@
  * 
  * reading multiple DB from S7 is not done yet
  * 
- * ---  @PRANAV 22/8/2021  19:20
+ * ---  @PRANAV 22/8/2021  20:20
 
 ----------------------------------------------------------------------
 Data Read Demo
@@ -201,10 +201,7 @@ void setup() {
         Serial.println(" OK");
     }
 
-    //==========================MQTT =====================
-    client.setServer(mqtt_server, 1883);
-    client.setCallback(callback);
-    //==========================MQTT =====================
+    
     xTaskCreatePinnedToCore(
                       Task1code,   /* Task function. */
                       "Task1",     /* name of task. */
@@ -226,6 +223,10 @@ void setup() {
                           &Task2,      /* Task handle to keep track of created task */
                           1);          /* pin task to core 0 */                  
 
+  //==========================MQTT =====================
+    client.setServer(mqtt_server, 1883);
+    client.setCallback(callback);
+    //==========================MQTT =====================
 
 }
 ////////////////////////////////END SETUP //////////////////////////////////
@@ -233,7 +234,7 @@ void setup() {
 
 
 
-//Task1code: connecting the mqtt
+//Task1code: SENDING the MQTT
 void Task1code( void * pvParameters ){
   Serial.print("Task1 running on core ");
   Serial.println(xPortGetCoreID());
@@ -285,18 +286,64 @@ void Task1code( void * pvParameters ){
   }
 }
 
+//----------------------------------------------------------------------
+// Reverse float/dword/dint
+//----------------------------------------------------------------------
+void Reverse4(void *ptr)
+{
+  byte *pb;
+  byte tmp;
+  pb=(byte*)(ptr);
+  // Swap byte 4 with byte 1
+  tmp=*(pb+3);
+  *(pb+3)=*pb;
+  *pb=tmp;
+  // Swap byte 3 with byte 2
+  tmp=*(pb+2);
+  *(pb+2)=*(pb+1);
+  *(pb+1)=tmp;
+}
 
-
-
-//Task2code: connecting the mqtt
+//Task2code: connecting S7 COMMUNICATION
 void Task2code( void * pvParameters ){
   Serial.print("Task2 running on core ");
   Serial.println(xPortGetCoreID());
 
   for(;;){
-  /////////////**********************READING DATA ****************************//////////////////////
 
   //Serial.print("Reading "); 
+  
+  /////////////======================== WRITING DATA =======================/////////////////////
+  //  MyBuffer[10] = 51;
+    /*Result=Client.WriteArea(S7AreaDB, // We are requesting DB access
+                          1,        // DB Number = 1
+                          0,        // Start from byte N.0
+                          15,     // We need "Size" bytes
+                          &MyBuffer);  // //bytes Put them into our target (Buffer or PDU)*/
+
+/*
+    float f = 12.45;
+  
+    Reverse4(&f);
+      
+    Result=Client.WriteArea(S7AreaDB, // We are requesting DB access
+                       1,        // DB Number = 1
+                         0,        // Start from byte N.0
+                         4,     // We need "Size" bytes
+                         &f);  // Put them into our target (Buffer or PDU)
+
+
+                    
+  Serial.println("Result >>>>>>>>");
+  Serial.println(Result);
+  
+    if (Result==0)
+  {
+    Serial.println("Send Successfully ");
+                         
+  } */
+
+  /////////////========================  READING DATA ==========================////////////
 
   MarkTime();
   
@@ -325,10 +372,10 @@ void Task2code( void * pvParameters ){
     
     current_value["t4"] = S7.ByteAt(&MyBuffer, 10);
     
-    /*Serial.println("Previous Value::::::");
+    Serial.println("Previous Value::::::");
     serializeJsonPretty(prev_value, Serial);   //Printing the JSON Payload
     Serial.println("Current Value::::::");
-    serializeJsonPretty(current_value, Serial);   //Printing the JSON Payload*/
+    serializeJsonPretty(current_value, Serial);   //Printing the JSON Payload
     
     for (int i = 1; i <= 4; i++) {
       //Serial.println("In For  LOOP");
