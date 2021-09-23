@@ -50,8 +50,8 @@ IPAddress eth_GW(10, 0, 0, 1);   // *** CHANGE THIS to match YOUR Gateway (route
 
 /*// Following constants are needed if you are connecting via WIFI
 // The ssid is the name of my WIFI network (the password obviously is wrong)
-char ssid[] = "DIGIMECK ENGINEERS";    // Your network SSID (name)
-char pass[] = "DIGI@2019";  // Your network password (if any)
+char ssid[] = "";    // Your network SSID (name)
+char pass[] = "";  // Your network password (if any)
 IPAddress Gateway(171, 17, 1, 1);
 IPAddress Subnet(255, 255, 255, 0);*/
 
@@ -60,13 +60,11 @@ const char* mqtt_server = "165.22.216.124";
 EthernetClient espClient;
 PubSubClient client(espClient);
 
-long lastMsg = 0;
-char msg[50];
+//long lastMsg = 0;
+//char msg[50];
 int value = 0;
 //==========================MQTT ======================
-
 int Size, Result;
-
 float Pressure;
 unsigned long Encoder;
 int Component;
