@@ -1,0 +1,6 @@
+SENDING DATA OVER MQTT 
+
+NOT FOR USE 
+/Fake data no S7 communication
+
+WITH LAN CONNECTION TESTING.
